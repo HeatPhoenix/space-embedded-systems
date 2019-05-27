@@ -7,11 +7,15 @@ int currentMilis = 0;//current time value for active watchdog timer
 //start as inactive
 bool active = false;
 
+//inactive = 700, active = 200
+int ledTime = 700;
+
 
 void setup() {
 
 	//setting serial to baudrate of 9600
 	Serial.begin(9600);
+	Serial1.begin(9600);
 
 	//notifying host machine which unit this is
 	char printable [50];
@@ -20,15 +24,12 @@ void setup() {
 
 	// initialize digital pin LED_BUILTIN as an output.
 	pinMode(LED_BUILTIN, OUTPUT);
-
+	
 	//timer setup
- // initialize timer1 
-
 	noInterrupts();           // disable all interrupts
 	TCCR1A = 0;
 	TCCR1B = 0;
 	TCNT1 = 0;
-
 
 	OCR1A = 31250;            // compare match register 16MHz/256/2Hz
 	TCCR1B |= (1 << WGM12);   // CTC mode
@@ -39,44 +40,58 @@ void setup() {
 	//if unit 1 start as active
 	if (UNIT_NO == 1)
 		active = true;
+
+	//set hw watchdog
+	wdt_enable(WDTO_4S);
 }
 
 void loop() {
 	//debug blinking LED to make sure it hasn't crashed
 	digitalWrite(LED_BUILTIN, HIGH);   
-	delay(300);                       
+	delay(ledTime);                       
 	digitalWrite(LED_BUILTIN, LOW);  
-	delay(300);    
+	delay(ledTime);     
 
 	//if the current active unit
 	if (active)
 	{
+		ledTime = 200;
 		ReceiveCommand();
 		MotorDriving();
 		WatchdogReset();
 	}
+
+	wdt_reset();
 }
 
 void WatchdogReset()//if active and unit 1, alert unit 2 while alive
 {
 	if (UNIT_NO == 1 && active)
 	{
-		Serial.write('a');
+		char printable[50];
+		sprintf(printable, "Resetting Unit 2 Watchdog; Time = %e", millis());
+		Serial.println(printable);
+		Serial1.write('a');
+		
 	}
 }
 
-//receives data at all over serial0
-void serialEvent()//currently set to usb
+//receives data at all over serial1
+void serialEvent1()//currently set to serial1
 {
-	if ((char)Serial.read() == 'a')
+	if (!active)
 	{
-		//reset
-		currentMilis = 0;
-		Serial.println("Watchdog reset received");
-	}
-	else
-	{
-		Serial.println("Incorrect watchdog message received");
+		if ((char)Serial1.read() == 'a')
+		{
+			//reset
+			currentMilis = 0;
+			Serial.println("Watchdog reset received");
+			Serial1.flush();
+		}
+		else
+		{
+			Serial.println("Incorrect watchdog message received");
+		}
 	}
 }
 
