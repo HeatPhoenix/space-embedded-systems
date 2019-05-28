@@ -10,12 +10,17 @@ bool active = false;
 //inactive = 700, active = 200
 int ledTime = 700;
 
+//LDR read-outs
+//int ldrChange = 0;//change over the past 
+//int ldrValues[5];
+//int ldrChangeThreshold;
+
 
 void setup() {
 
 	//setting serial to baudrate of 9600
 	Serial.begin(9600);
-	Serial1.begin(9600);
+	Serial1.begin(1200);//inter-mcu code
 
 	//notifying host machine which unit this is
 	char printable [50];
@@ -43,6 +48,9 @@ void setup() {
 
 	//set hw watchdog
 	wdt_enable(WDTO_4S);
+
+	//analog ldr setup
+	pinMode(A0, INPUT_PULLUP);//pullup so uses internal resistor because goddamn
 }
 
 void loop() {
@@ -59,9 +67,17 @@ void loop() {
 		ReceiveCommand();
 		MotorDriving();
 		WatchdogReset();
+		ldrReadOut();
 	}
 
 	wdt_reset();
+}
+
+
+void ldrReadOut()
+{
+	Serial.print("LDR read-out: ");
+	Serial.println(analogRead(A0));
 }
 
 void WatchdogReset()//if active and unit 1, alert unit 2 while alive
@@ -69,11 +85,19 @@ void WatchdogReset()//if active and unit 1, alert unit 2 while alive
 	if (UNIT_NO == 1 && active)
 	{
 		char printable[50];
-		sprintf(printable, "Resetting Unit 2 Watchdog; Time = %e", millis());
+		sprintf(printable, "Resetting Unit 2 Watchdog; Time = %d s", millis()/1000);
 		Serial.println(printable);
-		Serial1.write('a');
-		
+		Serial1.write(120);		
 	}
+}
+
+void serial1Flush() {
+	Serial.print("Flushing: ");
+	while (Serial1.available() > 0) {
+		char t = Serial1.read();
+		Serial.print(t);
+	}
+	Serial.println();
 }
 
 //receives data at all over serial1
@@ -81,17 +105,21 @@ void serialEvent1()//currently set to serial1
 {
 	if (!active)
 	{
-		if ((char)Serial1.read() == 'a')
+		int read = Serial1.read();
+		Serial1.println(read);
+		if (read == 120)
 		{
 			//reset
 			currentMilis = 0;
-			Serial.println("Watchdog reset received");
-			Serial1.flush();
+			Serial.print("Watchdog reset received, namely: ");
 		}
 		else
 		{
-			Serial.println("Incorrect watchdog message received");
+			Serial.print("Incorrect watchdog message received, namely: ");
+			Serial.println(read);
 		}
+		Serial1.flush();
+		serial1Flush();
 	}
 }
 
@@ -101,20 +129,21 @@ ISR(TIMER1_COMPA_vect) {//every 500ms
 	if (!active)//only pay attention to the timer if inactive
 	{
 		char printable [60];
-		sprintf(printable, "Current milliseconds: %d", currentMilis);
+		sprintf(printable, "Current seconds: %d s", currentMilis/1000);
 		Serial.println(printable);
 		if (currentMilis > WATCHDOG_MS)
 		{
 			Serial.println("Watchdog activated");
 			Serial.println("Activating this unit");
 			active = true;
+			return;
 		}
 		else
 		{
 			currentMilis += millis() - oldMilis;
 		}
 		oldMilis = millis();
-		sprintf(printable, "Total milliseconds: %d", millis());
+		sprintf(printable, "Total seconds: %d s", millis()/1000);
 		Serial.println(printable);
 	}
 }
