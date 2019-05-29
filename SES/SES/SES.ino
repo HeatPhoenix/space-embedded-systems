@@ -15,7 +15,7 @@ int ledTime = 700;
 
 //LDR read-outs
 int ldrValues[3];//changes between frames for 5 data frames
-int ldrChangeThreshold = 100;//if change exceeds this, consider the motor moving
+int ldrChangeThreshold = 20;//if change exceeds this, consider the motor moving
 int ldrValuesIndex = 0;//current index to be filled next loop
 
 int lastLdrRead = 0;
@@ -104,14 +104,14 @@ void activeTasks()
 	//MotorDriving();//send commands to motor
 
 	WatchdogReset();//stave off watchdog reset
-	ldrReadOut();//process current light sensor data
 
-	detectMovement();//detect movement when necessary
+
 }
 
 void detectMovement() {
 	if (currentlyMoving)
 	{
+		Serial.println("Checking whether or not it's moving");
 		for (int i = 0; i < 3; i++)//sizeof(ldrValues) / sizeof(int)
 		{
 			if (abs(ldrValues[i]) > abs(ldrChangeThreshold))
@@ -184,10 +184,19 @@ void serial1Flush() {
 	Serial.println();
 }
 
+void serialFlush() {
+	Serial.print("Flushing USB: ");
+	while (Serial.available() > 0) {
+		char t = Serial.read();
+		Serial.print(t);
+	}
+	Serial.println();
+}
+
 //receives data at all over serial1
 void serialEvent1()//currently set to serial1 (pin 18/19)
 {
-	if (!active)
+	if (!active && UNIT_NO == 2)
 	{
 		int read = Serial1.read();
 		Serial1.println(read);
@@ -210,99 +219,112 @@ void serialEvent1()//currently set to serial1 (pin 18/19)
 
 void serialEvent()
 {
-	int plus_pos, pos;   // variable to store the servo position
-	char rx_byte = 0, sign;
-	char buff[3];
-	int count = 3, i = 0, k, j;
-	bool flag = "TRUE";
-	//initialize position of motor
-   //initialize buffer for receiving commands from keyboard
-	for (j = 0; j < 3; j++)
+	if (active)
 	{
-		buff[j] = 0;
-	}
-	while (count > 0) // read up to 360 degrees 
-	{
-		if (Serial.available() > 0)
-		{                                // is a character available?
-			rx_byte = Serial.read();       // get the character
-			// check if a number was received
-			if ((rx_byte >= '0') && (rx_byte <= '9'))
-			{
-				buff[i] = rx_byte - 48;
-				count--;
-				i++;
-			}
-			else
-			{
-				Serial.println("Not correct, please type again.");
+		int plus_pos, pos;   // variable to store the servo position
+		char rx_byte = 0, sign;
+		char buff[3];
+		int count = 3, i = 0, k, j;
+		bool flag = "TRUE";
+		//initialize position of motor
+	   //initialize buffer for receiving commands from keyboard
+		for (j = 0; j < 3; j++)
+		{
+			buff[j] = 0;
+		}
+		while (count > 0) // read up to 360 degrees 
+		{
+			if (Serial.available() > 0)
+			{                                // is a character available?
+				rx_byte = Serial.read();       // get the character
+				// check if a number was received
+				if ((rx_byte >= '0') && (rx_byte <= '9'))
+				{
+					buff[i] = rx_byte - 48;
+					count--;
+					i++;
+				}
+				else
+				{
+					Serial.println("Not correct, please type again.");
+				}
 			}
 		}
-	}
-	sign = buff[0] + 48; //sign received
-	//sign= buff[0];
-	Serial.println(sign);
-	Serial.print("Angle received:");
-	count = 3;  //2 digits + 1 sign
-	i--;
-	for (k = 1; k <= i; k++)
-	{
-		buff[k] = buff[k] + 48;
-		Serial.print(buff[k]);
-		buff[k] = buff[k] - 48;
-	}
-	i = 0;
-	//}
-  //CHECK IF DEGREES ARE BELOW 180 AND ADJUST-----
-	plus_pos = buff[1] * 10 + buff[2];
-	pos = prev_pos + plus_pos;
-	if (sign == '1')
-	{
-		pos = prev_pos - plus_pos;
-		Serial.println("SUBSTARCTION1");
-	}
 
-	if (pos > 180 || (pos < 0))
-	{
-		Serial.println("Incorrect angle");
-		pos = prev_pos;
+		sign = buff[0] + 48; //sign received
+		//sign= buff[0];
+		Serial.println(sign);
+		Serial.print("Angle received:");
+		count = 3;  //2 digits + 1 sign
+		i--;
+		for (k = 1; k <= i; k++)
+		{
+			buff[k] = buff[k] + 48;
+			Serial.print(buff[k]);
+			buff[k] = buff[k] - 48;
+		}
+		i = 0;
+		//CHECK IF DEGREES ARE BELOW 180 AND ADJUST-----
+		plus_pos = buff[1] * 10 + buff[2];
+		pos = prev_pos + plus_pos;
+		if (sign == '1')
+		{
+			pos = prev_pos - plus_pos;
+			Serial.println("SUBSTRACTION1");
+		}
+
+		if (pos > 180 || (pos < 0))
+		{
+			Serial.println("Incorrect angle");
+			pos = prev_pos;
+		}
+		else
+		{
+			Serial.println("Plus position is:");
+			Serial.println(plus_pos);
+			Serial.println("Motor start");
+			currentlyMoving = true;
+			if (flag)
+			{
+				// in steps of 1 degree
+				if (sign == '1')
+				{
+					for (j = prev_pos; j >= pos; j--)
+					{
+						Serial.println("SUBSTRACTION");
+						myservo.write(j);              // tell servo to go to position in variable 'j'
+						Serial.println(j);
+						delay(15);                       // waits 15ms for the servo to reach the position
+					}
+				}
+				else
+				{
+					for (j = prev_pos; j <= pos; j++)
+					{
+						myservo.write(j);              // tell servo to go to position in variable 'j'
+						Serial.println(j);
+						delay(15);                       // waits 15ms for the servo to reach the position
+					}
+				}
+				//here
+				Serial.println("Motor end");
+				currentlyMoving = false;
+				if (UNIT_NO == 1)
+					movementEnded();
+				prev_pos = pos;
+			}
+		}
 	}
 	else
 	{
-		Serial.println("Plus position is:");
-		Serial.println(plus_pos);
-		if (flag)
-		{
-			// in steps of 1 degree
-			if (sign == '1')
-			{
-				for (j = prev_pos; j >= pos; j--)
-				{
-					Serial.println("SUBSTARCTION");
-					myservo.write(j);              // tell servo to go to position in variable 'j'
-					Serial.println(j);
-					delay(15);                       // waits 15ms for the servo to reach the position
-				}
-			}
-			else
-			{
-				for (j = prev_pos; j <= pos; j++)
-				{
-					myservo.write(j);              // tell servo to go to position in variable 'j'
-					Serial.println(j);
-					delay(15);                       // waits 15ms for the servo to reach the position
-				}
-			}
-			prev_pos = pos;
-		}
+		serialFlush();
 	}
-
 }
 
 long oldMilis;
 
 ISR(TIMER3_COMPB_vect) {//every 500ms
-	if (!active)//only pay attention to the timer if inactive
+	if (!active && UNIT_NO == 2)//only pay attention to the timer if inactive
 	{
 		Serial.print("Current seconds: ");
 		Serial.print(currentMillis / 1000);
@@ -324,6 +346,11 @@ ISR(TIMER3_COMPB_vect) {//every 500ms
 		Serial.println(" s");
 	}
 
+	if (UNIT_NO == 1)
+	{
+		ldrReadOut();
+		detectMovement();//detect movement when necessary
+	}
 
 	TCNT3 = 0;
 }
