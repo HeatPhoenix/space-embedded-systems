@@ -1,6 +1,6 @@
 #include <avr\wdt.h>
 
-const int UNIT_NO = 1; //unit 2 waits for watchdog to run out, unit 1 operates immediately
+const int UNIT_NO = 2; //unit 2 waits for watchdog to run out, unit 1 operates immediately
 const int WATCHDOG_MS = 8000;//miliseconds after which watchdog times out and changes active units
 int currentMilis = 0;//current time value for active watchdog timer
 
@@ -27,7 +27,7 @@ void setup() {
 
 	//setting serial to baudrate of 9600
 	Serial.begin(9600);
-	Serial1.begin(1200);//inter-mcu code
+	Serial1.begin(9600);//inter-mcu code
 
 	//notifying host machine which unit this is
 	char printable[50];
@@ -39,14 +39,14 @@ void setup() {
 
 	//timer setup
 	noInterrupts();           // disable all interrupts
-	TCCR1A = 0;
-	TCCR1B = 0;
-	TCNT1 = 0;
+	TCCR3A = 0;
+	TCCR3B = 0;
+	TCNT3 = 0;
 
-	OCR1A = 31250;            // compare match register 16MHz/256/2Hz
-	TCCR1B |= (1 << WGM12);   // CTC mode
-	TCCR1B |= (1 << CS12);    // 256 prescaler 
-	TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
+	OCR3A = 31250;            // compare match register 16MHz/256/2Hz
+	TCCR3B |= (1 << WGM32);   // CTC mode
+	TCCR3B |= (1 << CS32);    // 256 prescaler 
+	TIMSK3 |= (1 << OCIE3A);  // enable timer compare interrupt
 	interrupts();             // enable all interrupts
 
 	//if unit 1 start as active
@@ -54,7 +54,7 @@ void setup() {
 		active = true;
 
 	//set hw watchdog
-	wdt_enable(WDTO_4S);
+	wdt_enable(WDTO_2S + WDTO_1S);
 
 	//analog ldr setup
 	pinMode(A0, INPUT_PULLUP);//pullup so uses internal resistor because goddamn
@@ -179,7 +179,7 @@ void serialEvent1()//currently set to serial1
 
 long oldMilis;
 
-ISR(TIMER1_COMPA_vect) {//every 500ms
+ISR(TIMER3_COMPA_vect) {//every 500ms
 	if (!active)//only pay attention to the timer if inactive
 	{
 		char printable[60];
